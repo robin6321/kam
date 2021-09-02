@@ -35,12 +35,12 @@ Feature: Basic test
         Given gitops repository is created
         When executing "kam bootstrap --service-repo-url $SERVICE_REPO_URL --gitops-repo-url $GITOPS_REPO_URL --image-repo $IMAGE_REPO --dockercfgjson $DOCKERCONFIGJSON_PATH --git-host-access-token $GIT_ACCESS_TOKEN --output bootstrap --overwrite" succeeds
         Then executing "cd bootstrap" succeeds
-        Then executing "git init ." succeeds
-        Then executing "git add ." succeeds
-        Then executing "git commit -m 'Initial commit.'" succeeds
-        Then executing "git remote add origin $GITOPS_REPO_URL" succeeds
-        Then executing "git branch -M main" succeeds
-        Then executing "git push -u origin main" succeeds
+        And executing "git init ." succeeds
+        And executing "git add ." succeeds
+        And executing "git commit -m 'Initial commit.'" succeeds
+        And executing "git remote add origin $GITOPS_REPO_URL" succeeds
+        And executing "git branch -M main" succeeds
+        And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
         Then login argocd API server
         And Wait for "180" seconds
@@ -49,8 +49,36 @@ Feature: Basic test
         And application "dev-env" should be in "Synced" state
         And application "stage-env" should be in "Synced" state
         And application "cicd-app" should be in "Synced" state
-        Then executing "oc delete -k config/argocd"
+        And executing "oc delete -k config/argocd" succeeds
+        And executing "cd .." succeeds
+
+    Scenario: First CI run
+        Given gitops repository is created
+        When executing "kam bootstrap --service-repo-url $SERVICE_REPO_URL --gitops-repo-url $GITOPS_REPO_URL --image-repo $IMAGE_REPO --dockercfgjson $DOCKERCONFIGJSON_PATH --git-host-access-token $GIT_ACCESS_TOKEN --output CIrun --overwrite" succeeds
+        Then executing "cd CIrun" succeeds
+        And executing "git init ." succeeds
+        And executing "git add ." succeeds
+        And executing "git commit -m 'Initial commit.'" succeeds
+        And executing "git remote add origin $GITOPS_REPO_URL" succeeds
+        And executing "git branch -M main" succeeds
+        And executing "git push -u origin main" succeeds
+        When executing "oc apply -k config/argocd/" succeeds
+        Then login argocd API server
+        And Wait for "180" seconds
+        Then application "argo-app" should be in "Synced" state
+        And application "dev-app-taxi" should be in "Synced" state
+        And application "dev-env" should be in "Synced" state
+        And application "stage-env" should be in "Synced" state
+        And application "cicd-app" should be in "Synced" state
         Then executing "cd .." succeeds
+        And executing "oc apply -f secrets" succeeds
+        And executing "cd CIrun" succeeds
+        When executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
+        Then stderr should be empty
+        And executing "kam webhook delete --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
+        And executing "oc delete -k config/argocd" succeeds
+        And executing "cd .." succeeds
+        And executing "oc delete -f secrets" succeeds
 
     Scenario: Create an Application/Service in the new Environment
         Given gitops repository is created

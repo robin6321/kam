@@ -12,5 +12,5 @@ func DirectoryShouldExist(dirName string) error {
 		return nil
 	}
 
-	return fmt.Errorf("No directory in the name %s exists", dirName)
+	return fmt.Errorf("no directory in the name %s exists", dirName)
 }

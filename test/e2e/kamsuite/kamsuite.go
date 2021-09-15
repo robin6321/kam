@@ -64,6 +64,14 @@ func FeatureContext(s *godog.Suite) {
 
 	s.AfterScenario(func(*messages.Pickle, error) {
 		fmt.Println("After scenario")
+		err := os.RemoveAll("bootstrapresources")
+		if err != nil {
+			log.Fatal(err)
+		}
+		err2 := os.RemoveAll("secrets")
+		if err2 != nil {
+			log.Fatal(err)
+		}
 		re := regexp.MustCompile(`[a-z]+`)
 		scm := re.FindAllString(os.Getenv("GITOPS_REPO_URL"), 2)[1]
 
@@ -195,7 +203,7 @@ func waitForTime(wait int) error {
 func applicationState(appName string, appState string) error {
 	err := argoAppStatusMatch(appState, appName)
 	if err != nil {
-		return fmt.Errorf("Error is : %v", err)
+		return fmt.Errorf("error is : %v", err)
 	}
 	return nil
 }
@@ -300,7 +308,7 @@ func waitForDeploymentsUpAndRunning(namespace string, deploymentName string) err
 	if err == nil && strings.Contains(stdout.String(), "successfully rolled out") {
 		return nil
 	}
-	return fmt.Errorf("Error is : %v", stderr.String())
+	return fmt.Errorf("error is : %v", stderr.String())
 }
 
 func argoAppStatusMatch(matchString string, appName string) error {
@@ -322,7 +330,7 @@ func argoAppStatusMatch(matchString string, appName string) error {
 	if strings.Contains(appDetailsString, matchString) {
 		return nil
 	}
-	return fmt.Errorf("Error is : %v", stderr.String())
+	return fmt.Errorf("error is : %v", stderr.String())
 }
 
 func openhiftServerVersion() (string, error) {

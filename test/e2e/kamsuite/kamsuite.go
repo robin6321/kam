@@ -64,14 +64,6 @@ func FeatureContext(s *godog.Suite) {
 
 	s.AfterScenario(func(*messages.Pickle, error) {
 		fmt.Println("After scenario")
-		err := os.RemoveAll("bootstrapresources")
-		if err != nil {
-			log.Fatal(err)
-		}
-		err2 := os.RemoveAll("secrets")
-		if err2 != nil {
-			log.Fatal(err)
-		}
 		re := regexp.MustCompile(`[a-z]+`)
 		scm := re.FindAllString(os.Getenv("GITOPS_REPO_URL"), 2)[1]
 

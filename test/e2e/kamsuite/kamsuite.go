@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -17,7 +18,12 @@ import (
 	"github.com/cucumber/messages-go/v10"
 	"github.com/jenkins-x/go-scm/scm"
 	"github.com/jenkins-x/go-scm/scm/factory"
+	"github.com/redhat-developer/kam/pkg/pipelines/yaml"
+
+	deployment "github.com/redhat-developer/kam/pkg/pipelines/deployment"
 	"github.com/redhat-developer/kam/pkg/pipelines/git"
+	"github.com/redhat-developer/kam/pkg/pipelines/ioutils"
+	res "github.com/redhat-developer/kam/pkg/pipelines/resources"
 )
 
 // FeatureContext defines godog.Suite steps for the test suite.
@@ -27,17 +33,23 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^directory "([^"]*)" should exist$`,
 		DirectoryShouldExist)
 
-	s.Step(`^gitops repository is created$`,
+	// For creating repository with name specified in basic.feature
+	s.Step(`^"([^"]*)" repository is created$`,
 		createRepository)
 
 	s.Step(`^login argocd API server$`,
 		loginArgoAPIServerLogin)
 
+	// Checking if the apps have been synced
 	s.Step(`^application "([^"]*)" should be in "([^"]*)" state$`,
 		applicationState)
 
 	s.Step(`^Wait for "(\d*)" seconds$`,
 		waitForTime)
+
+	// Adding sample kubernetes resource
+	s.Step(`^add kubernetes resource to the service in new environment$`,
+		addResource)
 
 	s.BeforeSuite(func() {
 		fmt.Println("Before suite")
@@ -60,24 +72,32 @@ func FeatureContext(s *godog.Suite) {
 
 	s.BeforeScenario(func(this *messages.Pickle) {
 		fmt.Println("Before scenario")
+
+		// Clearing working directory before each scenario
+		f, err := os.Open("./")
+		if err == nil {
+			err := os.RemoveAll("bootstrapresources")
+			if err != nil {
+				log.Fatal(err)
+			}
+			err2 := os.RemoveAll("secrets")
+			if err2 != nil {
+				log.Fatal(err2)
+			}
+			fmt.Println("Cleared working directory")
+		}
+		defer f.Close()
 	})
 
 	s.AfterScenario(func(*messages.Pickle, error) {
 		fmt.Println("After scenario")
-		err := os.RemoveAll("bootstrapresources")
-		if err != nil {
-			log.Fatal(err)
-		}
-		err2 := os.RemoveAll("secrets")
-		if err2 != nil {
-			log.Fatal(err)
-		}
 		re := regexp.MustCompile(`[a-z]+`)
 		scm := re.FindAllString(os.Getenv("GITOPS_REPO_URL"), 2)[1]
 
 		switch scm {
 		case "github":
 			deleteGithubRepository(os.Getenv("GITOPS_REPO_URL"), os.Getenv("GIT_ACCESS_TOKEN"))
+			deleteGithubRepository(os.Getenv("BUS_REPO_URL"), os.Getenv("GIT_ACCESS_TOKEN"))
 		case "gitlab":
 			deleteGitlabRepoStep := []string{"repo", "delete", strings.Split(strings.Split(os.Getenv("GITOPS_REPO_URL"), ".com/")[1], ".")[0], "-y"}
 			ok, errMessage := deleteGitlabRepository(deleteGitlabRepoStep)
@@ -91,7 +111,7 @@ func FeatureContext(s *godog.Suite) {
 }
 
 func envVariableCheck() bool {
-	envVars := []string{"SERVICE_REPO_URL", "GITOPS_REPO_URL", "IMAGE_REPO", "DOCKERCONFIGJSON_PATH", "GIT_ACCESS_TOKEN"}
+	envVars := []string{"SERVICE_REPO_URL", "GITOPS_REPO_URL", "IMAGE_REPO", "DOCKERCONFIGJSON_PATH", "GIT_ACCESS_TOKEN", "BUS_REPO_URL"}
 	val, ok := os.LookupEnv("CI")
 	if !ok {
 		for _, envVar := range envVars {
@@ -124,6 +144,7 @@ func envVariableCheck() bool {
 			os.Setenv("SERVICE_REPO_URL", "https://github.com/kam-bot/taxi")
 			os.Setenv("GITOPS_REPO_URL", "https://github.com/kam-bot/taxi-"+os.Getenv("PRNO")+majorVersion)
 			os.Setenv("IMAGE_REPO", "quay.io/kam-bot/taxi")
+			os.Setenv("BUS_REPO_URL", "https://github.com/kam-bot/bus-"+os.Getenv("PRNO")+majorVersion)
 			os.Setenv("DOCKERCONFIGJSON_PATH", os.Getenv("KAM_QUAY_DOCKER_CONF_SECRET_FILE"))
 			os.Setenv("GIT_ACCESS_TOKEN", os.Getenv("GITHUB_TOKEN"))
 		} else {
@@ -162,37 +183,10 @@ func deleteGithubRepository(repoURL, token string) {
 	}
 	_, err = repo.Repositories.Delete(context.TODO(), repoName)
 	if err != nil {
-		log.Printf("unable to delete repository: %v", err)
+		log.Printf("unable to delete repository %v: %v", repoName, err)
 	} else {
 		log.Printf("Successfully deleted repository: %q", repoURL)
 	}
-}
-
-func createRepository() error {
-	repoName := strings.Split(os.Getenv("GITOPS_REPO_URL"), "/")[4]
-	parsed, err := url.Parse(os.Getenv("GITOPS_REPO_URL"))
-	if err != nil {
-		return err
-	}
-
-	parsed.User = url.UserPassword("", os.Getenv("GITHUB_TOKEN"))
-	client, err := factory.FromRepoURL(parsed.String())
-	if err != nil {
-		return err
-	}
-
-	ri := &scm.RepositoryInput{
-		Private:     false,
-		Description: "repocreate",
-		Namespace:   "",
-		Name:        repoName,
-	}
-	_, _, err = client.Repositories.Create(context.Background(), ri)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func waitForTime(wait int) error {
@@ -205,6 +199,44 @@ func applicationState(appName string, appState string) error {
 	if err != nil {
 		return fmt.Errorf("error is : %v", err)
 	}
+	return nil
+}
+
+func parse(repo string) (string, *url.URL, error) {
+	if repo == "gitops" {
+		parsed, err := url.Parse(os.Getenv("GITOPS_REPO_URL"))
+		name := strings.Split(os.Getenv("GITOPS_REPO_URL"), "/")
+		return name[4], parsed, err
+	} else {
+		parsed, err := url.Parse(os.Getenv("BUS_REPO_URL"))
+		name := strings.Split(os.Getenv("BUS_REPO_URL"), "/")
+		return name[4], parsed, err
+	}
+}
+
+func createRepository(repo string) error {
+	name, parsed, err := parse(repo)
+	if err != nil {
+		return err
+	}
+	parsed.User = url.UserPassword("", os.Getenv("GITHUB_TOKEN"))
+	client, err := factory.FromRepoURL(parsed.String())
+	if err != nil {
+		return err
+	}
+
+	ri := &scm.RepositoryInput{
+		Private:     false,
+		Description: "repocreate",
+		Namespace:   "",
+		Name:        name,
+	}
+
+	_, _, err = client.Repositories.Create(context.Background(), ri)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Created repositry: %v", name)
 	return nil
 }
 
@@ -347,4 +379,23 @@ func openhiftServerVersion() (string, error) {
 
 	re := regexp.MustCompile(`Server\s+Version:\s+(\d.{2})`)
 	return strings.Replace(strings.Trim(re.FindStringSubmatch(stdout.String())[1], "\""), ".", "", -1), nil
+}
+
+func addResource() error {
+	appFs := ioutils.NewFilesystem()
+	const (
+		path           = "bootstrapresources/environments/new-env/apps/app-bus/services/bus/base/config"
+		partOf         = "app-bus"
+		env            = "new-env"
+		name           = "bus"
+		bootstrapImage = "nginxinc/nginx-unprivileged:latest"
+	)
+	resources := res.Resources{}
+	resources[filepath.Join(path, "deployment.yaml")] = deployment.Create(partOf, env, name, bootstrapImage, deployment.ContainerPort(8080))
+	resources[filepath.Join(path, "kustomization.yaml")] = &res.Kustomization{
+		Resources: []string{
+			"deployment.yaml",
+		}}
+	_, err := yaml.WriteResources(appFs, "", resources)
+	return err
 }

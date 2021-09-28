@@ -35,7 +35,7 @@ Feature: Basic test
         And executing "git remote add origin $GITOPS_REPO_URL" succeeds
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
-        Then executing "cd .." succeeds
+        And executing "cd .." succeeds
 
     Scenario: Bringing the deployment infrastructure up
         Given "gitops" repository is created
@@ -48,14 +48,13 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        Then login argocd API server
-        And Wait for "180" seconds
-        Then application "argo-app" should be in "Synced" state
-        And application "dev-app-taxi" should be in "Synced" state
-        And application "dev-env" should be in "Synced" state
-        And application "stage-env" should be in "Synced" state
-        And application "cicd-app" should be in "Synced" state
-        And executing "oc delete -k config/argocd" succeeds
+        And login argocd API server
+        Then Wait for application "argo-app" to be in "Synced" state
+        And Wait for application "dev-app-taxi" to be in "Synced" state
+        And Wait for application "dev-env" to be in "Synced" state
+        And Wait for application "stage-env" to be in "Synced" state
+        And Wait for application "cicd-app" to be in "Synced" state
+        Then executing "oc delete -k config/argocd" succeeds
         And executing "cd .." succeeds
         
     Scenario: First CI run
@@ -69,19 +68,18 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        Then login argocd API server
-        And Wait for "180" seconds
-        Then application "argo-app" should be in "Synced" state
-        And application "dev-app-taxi" should be in "Synced" state
-        And application "dev-env" should be in "Synced" state
-        And application "stage-env" should be in "Synced" state
-        And application "cicd-app" should be in "Synced" state
+        And login argocd API server
+        Then Wait for application "argo-app" to be in "Synced" state
+        And Wait for application "dev-app-taxi" to be in "Synced" state
+        And Wait for application "dev-env" to be in "Synced" state
+        And Wait for application "stage-env" to be in "Synced" state
+        And Wait for application "cicd-app" to be in "Synced" state
         Then executing "cd .." succeeds
         And executing "oc apply -f secrets" succeeds
         And executing "cd bootstrapresources" succeeds
         When executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
         Then stderr should be empty
-        And executing "kam webhook delete --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
+        Then executing "kam webhook delete --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
         And executing "oc delete -k config/argocd" succeeds
         And executing "cd .." succeeds
         And executing "oc delete -f secrets" succeeds
@@ -98,13 +96,12 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        Then login argocd API server
-        And Wait for "180" seconds
-        Then application "argo-app" should be in "Synced" state
-        And application "dev-app-taxi" should be in "Synced" state
-        And application "dev-env" should be in "Synced" state
-        And application "stage-env" should be in "Synced" state
-        And application "cicd-app" should be in "Synced" state
+        And login argocd API server
+        Then Wait for application "argo-app" to be in "Synced" state
+        And Wait for application "dev-app-taxi" to be in "Synced" state
+        And Wait for application "dev-env" to be in "Synced" state
+        And Wait for application "stage-env" to be in "Synced" state
+        And Wait for application "cicd-app" to be in "Synced" state
         Then executing "cd .." succeeds
         And executing "oc apply -f secrets" succeeds
         And executing "cd bootstrapresources" succeeds
@@ -116,24 +113,22 @@ Feature: Basic test
         When executing "kam service add --env-name new-env --app-name app-bus --service-name bus --git-repo-url $BUS_REPO_URL --pipelines-folder bootstrapresources" succeeds
         And executing "oc apply -f secrets/webhook-secret-new-env-bus.yaml" succeeds
         Then add kubernetes resource to the service in new environment
-        And Wait for "180" seconds
         And executing "cd bootstrapresources" succeeds
         Then executing "git add ." succeeds
         And executing "git commit -m 'Add new service'" succeeds
         And executing "git push origin main" succeeds
-        And Wait for "300" seconds
-        Then application "argo-app" should be in "Synced" state
-        And application "dev-app-taxi" should be in "Synced" state
-        And application "dev-env" should be in "Synced" state
-        And application "stage-env" should be in "Synced" state
-        And application "cicd-app" should be in "Synced" state
-        And application "new-env-app-bus" should be in "Synced" state
-        And application "new-env-env" should be in "Synced" state
+        Then Wait for application "new-env-app-bus" to be in "Synced" state
+        And Wait for application "new-env-env" to be in "Synced" state
+        And Wait for application "argo-app" to be in "Synced" state
+        And Wait for application "dev-app-taxi" to be in "Synced" state
+        And Wait for application "dev-env" to be in "Synced" state
+        And Wait for application "stage-env" to be in "Synced" state
+        And Wait for application "cicd-app" to be in "Synced" state
         Then executing "kam webhook delete --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
         And executing "oc delete -k config/argocd" succeeds
         And executing "cd .." succeeds
         And executing "oc delete -f secrets" succeeds
-
+        
     Scenario: Create Webhook
         Given "gitops" repository is created
         And "bus" repository is created
@@ -146,13 +141,12 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        Then login argocd API server
-        And Wait for "180" seconds
-        Then application "argo-app" should be in "Synced" state
-        And application "dev-app-taxi" should be in "Synced" state
-        And application "dev-env" should be in "Synced" state
-        And application "stage-env" should be in "Synced" state
-        And application "cicd-app" should be in "Synced" state
+        And login argocd API server
+        Then Wait for application "argo-app" to be in "Synced" state
+        And Wait for application "dev-app-taxi" to be in "Synced" state
+        And Wait for application "dev-env" to be in "Synced" state
+        And Wait for application "stage-env" to be in "Synced" state
+        And Wait for application "cicd-app" to be in "Synced" state
         Then executing "cd .." succeeds
         And executing "oc apply -f secrets" succeeds
         And executing "cd bootstrapresources" succeeds
@@ -164,19 +158,17 @@ Feature: Basic test
         When executing "kam service add --env-name new-env --app-name app-bus --service-name bus --git-repo-url $BUS_REPO_URL --pipelines-folder bootstrapresources" succeeds
         And executing "oc apply -f secrets/webhook-secret-new-env-bus.yaml" succeeds
         Then add kubernetes resource to the service in new environment
-        And Wait for "180" seconds
         And executing "cd bootstrapresources" succeeds
         Then executing "git add ." succeeds
         And executing "git commit -m 'Add new service'" succeeds
         And executing "git push origin main" succeeds
-        And Wait for "300" seconds
-        Then application "argo-app" should be in "Synced" state
-        And application "dev-app-taxi" should be in "Synced" state
-        And application "dev-env" should be in "Synced" state
-        And application "stage-env" should be in "Synced" state
-        And application "cicd-app" should be in "Synced" state
-        And application "new-env-app-bus" should be in "Synced" state
-        And application "new-env-env" should be in "Synced" state
+        Then Wait for application "new-env-app-bus" to be in "Synced" state
+        And Wait for application "new-env-env" to be in "Synced" state
+        And Wait for application "argo-app" to be in "Synced" state
+        And Wait for application "dev-app-taxi" to be in "Synced" state
+        And Wait for application "dev-env" to be in "Synced" state
+        And Wait for application "stage-env" to be in "Synced" state
+        And Wait for application "cicd-app" to be in "Synced" state
         Then executing "cd .." succeeds
         When executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --env-name new-env --service-name bus --pipelines-folder bootstrapresources" succeeds
         Then stderr should be empty

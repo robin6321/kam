@@ -19,6 +19,7 @@ import (
 	"github.com/jenkins-x/go-scm/scm"
 	"github.com/jenkins-x/go-scm/scm/factory"
 	"github.com/redhat-developer/kam/pkg/pipelines/yaml"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	deployment "github.com/redhat-developer/kam/pkg/pipelines/deployment"
 	"github.com/redhat-developer/kam/pkg/pipelines/git"
@@ -40,12 +41,8 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^login argocd API server$`,
 		loginArgoAPIServerLogin)
 
-	// Checking if the apps have been synced
-	s.Step(`^application "([^"]*)" should be in "([^"]*)" state$`,
-		applicationState)
-
-	s.Step(`^Wait for "(\d*)" seconds$`,
-		waitForTime)
+	s.Step(`^Wait for application "([^"]*)" to be in "([^"]*)" state$`,
+		waitSync)
 
 	// Adding sample kubernetes resource
 	s.Step(`^add kubernetes resource to the service in new environment$`,
@@ -189,13 +186,14 @@ func deleteGithubRepository(repoURL, token string) {
 	}
 }
 
-func waitForTime(wait int) error {
-	time.Sleep(time.Duration(wait) * time.Second)
-	return nil
-}
-
-func applicationState(appName string, appState string) error {
-	err := argoAppStatusMatch(appState, appName)
+func waitSync(app string, state string) error {
+	err := wait.Poll(time.Second*1, time.Minute*10, func() (bool, error) {
+		isSynced, err := argoAppStatusMatch(state, app)
+		if err != nil {
+			return false, err
+		}
+		return isSynced, err
+	})
 	if err != nil {
 		return fmt.Errorf("error is : %v", err)
 	}
@@ -236,7 +234,7 @@ func createRepository(repo string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Created repositry: %v", name)
+	fmt.Printf("Created repositry: %v\n", name)
 	return nil
 }
 
@@ -343,26 +341,29 @@ func waitForDeploymentsUpAndRunning(namespace string, deploymentName string) err
 	return fmt.Errorf("error is : %v", stderr.String())
 }
 
-func argoAppStatusMatch(matchString string, appName string) error {
-	var stdout, stderr bytes.Buffer
+func argoAppStatusMatch(matchString string, appName string) (bool, error) {
+	var stdout bytes.Buffer
 	argocdPath, err := executableBinaryPath("argocd")
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	appList := []string{"app", "list"}
 	cmd := exec.Command(argocdPath, appList...)
 	cmd.Stdout = &stdout
 	if err = cmd.Run(); err != nil {
-		return err
+		return false, err
 	}
 
 	re, _ := regexp.Compile(appName + ".+")
 	appDetailsString := re.FindString(stdout.String())
-	if strings.Contains(appDetailsString, matchString) {
-		return nil
+	if appDetailsString == " " {
+		return false, nil
 	}
-	return fmt.Errorf("error is : %v", stderr.String())
+	if strings.Contains(appDetailsString, matchString) {
+		return true, nil
+	}
+	return false, nil
 }
 
 func openhiftServerVersion() (string, error) {

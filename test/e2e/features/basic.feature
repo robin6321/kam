@@ -48,7 +48,6 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        And login argocd API server
         Then Wait for application "argo-app" to be in "Synced" state
         And Wait for application "dev-app-taxi" to be in "Synced" state
         And Wait for application "dev-env" to be in "Synced" state
@@ -68,7 +67,6 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        And login argocd API server
         Then Wait for application "argo-app" to be in "Synced" state
         And Wait for application "dev-app-taxi" to be in "Synced" state
         And Wait for application "dev-env" to be in "Synced" state
@@ -96,7 +94,6 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        And login argocd API server
         Then Wait for application "argo-app" to be in "Synced" state
         And Wait for application "dev-app-taxi" to be in "Synced" state
         And Wait for application "dev-env" to be in "Synced" state
@@ -141,7 +138,6 @@ Feature: Basic test
         And executing "git branch -M main" succeeds
         And executing "git push -u origin main" succeeds
         Then executing "oc apply -k config/argocd/" succeeds
-        And login argocd API server
         Then Wait for application "argo-app" to be in "Synced" state
         And Wait for application "dev-app-taxi" to be in "Synced" state
         And Wait for application "dev-env" to be in "Synced" state

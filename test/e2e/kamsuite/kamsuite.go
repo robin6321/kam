@@ -38,9 +38,6 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^"([^"]*)" repository is created$`,
 		createRepository)
 
-	s.Step(`^login argocd API server$`,
-		loginArgoAPIServerLogin)
-
 	s.Step(`^Wait for application "([^"]*)" to be in "([^"]*)" state$`,
 		waitSync)
 
@@ -52,6 +49,10 @@ func FeatureContext(s *godog.Suite) {
 		fmt.Println("Before suite")
 		if !envVariableCheck() {
 			os.Exit(1)
+		}
+		err := loginArgoAPIServerLogin()
+		if err != nil {
+			log.Fatal(err)
 		}
 	})
 
@@ -189,9 +190,6 @@ func deleteGithubRepository(repoURL, token string) {
 func waitSync(app string, state string) error {
 	err := wait.Poll(time.Second*1, time.Minute*10, func() (bool, error) {
 		isSynced, err := argoAppStatusMatch(state, app)
-		if err != nil {
-			return false, err
-		}
 		return isSynced, err
 	})
 	if err != nil {
@@ -259,9 +257,9 @@ func loginArgoAPIServerLogin() error {
 	cmd.Stderr = &stderr
 	err = cmd.Run()
 	if err != nil {
-		fmt.Println(stderr.String())
 		return err
 	}
+	fmt.Println("Logged in to ArgoCD API server successfully")
 	return nil
 }
 
@@ -284,10 +282,15 @@ func argocdAPIServer() (string, error) {
 	deployments := []string{"openshift-gitops-server", "openshift-gitops-repo-server",
 		"openshift-gitops-redis", "openshift-gitops-applicationset-controller", "kam", "cluster"}
 
-	for deployment := range deployments {
-		if waitForDeploymentsUpAndRunning("openshift-gitops", deployments[deployment]); err != nil {
-			return "", err
-		}
+	for index := range deployments {
+		err = wait.Poll(time.Second*1, time.Minute*10, func() (bool, error) {
+			isRolledOut, err := waitForDeploymentsUpAndRunning("openshift-gitops", deployments[index])
+			return isRolledOut, err
+		})
+	}
+
+	if err != nil {
+		return "", err
 	}
 
 	cmd := exec.Command(ocPath, "get", "routes", "-n", "openshift-gitops",
@@ -324,21 +327,24 @@ func argocdAPIServerPassword() (string, error) {
 	return string(data), nil
 }
 
-func waitForDeploymentsUpAndRunning(namespace string, deploymentName string) error {
+func waitForDeploymentsUpAndRunning(namespace string, deploymentName string) (bool, error) {
 	var stderr, stdout bytes.Buffer
 	ocPath, err := executableBinaryPath("oc")
 	if err != nil {
-		return err
+		return false, err
 	}
 	cmd := exec.Command(ocPath, "rollout", "status", "deployment", deploymentName, "-n", namespace)
 
 	cmd.Stderr = &stderr
 	cmd.Stdout = &stdout
 	err = cmd.Run()
-	if err == nil && strings.Contains(stdout.String(), "successfully rolled out") {
-		return nil
+	if err == nil {
+		if strings.Contains(stdout.String(), "successfully rolled out") {
+			return true, err
+		}
+		return false, err
 	}
-	return fmt.Errorf("error is : %v", stderr.String())
+	return false, err
 }
 
 func argoAppStatusMatch(matchString string, appName string) (bool, error) {

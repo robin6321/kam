@@ -6,9 +6,9 @@ The GitOps Application Manager provides command line interface to bootstrap GitO
 
 |                                  KAM                                   | OpenShift | OpenShift GitOps | OpenShift Pipelines |
 | :--------------------------------------------------------------------: | :-------: | :--------------: | :-----------------: |
-|                           0.0.40 (Oct 14th)                            |    4.9    |       1.3        |  1.6.x (Oct 20th)   |
-| [0.0.39](https://github.com/redhat-developer/kam/releases/tag/v0.0.39) |    4.8    |      1.2.1       |        1.5.x        |
-| [0.0.38](https://github.com/redhat-developer/kam/releases/tag/v0.0.38) |    4.7    |      1.2.0       |        1.4.x        |
+| [0.0.40](https://github.com/redhat-developer/kam/releases/tag/v0.0.40) |    4.9    |       1.3        |        1.6.x        |
+| [0.0.39](https://github.com/redhat-developer/kam/releases/tag/v0.0.39) |    4.8    |      >=1.2.1     |        1.5.x        |
+| [0.0.38](https://github.com/redhat-developer/kam/releases/tag/v0.0.38) |    4.7    |      >=1.2.0     |        1.4.x        |
 
 ## CLI Reference
 

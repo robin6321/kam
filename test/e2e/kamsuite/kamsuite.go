@@ -42,15 +42,21 @@ func FeatureContext(s *godog.Suite) {
 		waitSync)
 
 	// Adding sample kubernetes resource
-	s.Step(`^add kubernetes resource to the service in new environment$`,
+	s.Step(`^Add kubernetes resource to the service in new environment$`,
 		addResource)
+
+	s.Step(`^Create a pull request$`,
+		createPR)
+
+	s.Step(`^Wait for all the checks to pass and merge the pull request$`,
+		waitPass)
 
 	s.BeforeSuite(func() {
 		fmt.Println("Before suite")
 		if !envVariableCheck() {
 			os.Exit(1)
 		}
-		err := loginArgoAPIServerLogin()
+		err := loginToArgoAPIServer()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -95,7 +101,6 @@ func FeatureContext(s *godog.Suite) {
 		switch scm {
 		case "github":
 			deleteGithubRepository(os.Getenv("GITOPS_REPO_URL"), os.Getenv("GIT_ACCESS_TOKEN"))
-			deleteGithubRepository(os.Getenv("BUS_REPO_URL"), os.Getenv("GIT_ACCESS_TOKEN"))
 		case "gitlab":
 			deleteGitlabRepoStep := []string{"repo", "delete", strings.Split(strings.Split(os.Getenv("GITOPS_REPO_URL"), ".com/")[1], ".")[0], "-y"}
 			ok, errMessage := deleteGitlabRepository(deleteGitlabRepoStep)
@@ -189,8 +194,7 @@ func deleteGithubRepository(repoURL, token string) {
 
 func waitSync(app string, state string) error {
 	err := wait.Poll(time.Second*1, time.Minute*10, func() (bool, error) {
-		isSynced, err := argoAppStatusMatch(state, app)
-		return isSynced, err
+		return argoAppStatusMatch(state, app)
 	})
 	if err != nil {
 		return fmt.Errorf("error is : %v", err)
@@ -198,25 +202,22 @@ func waitSync(app string, state string) error {
 	return nil
 }
 
-func parse(repo string) (string, *url.URL, error) {
-	if repo == "gitops" {
-		parsed, err := url.Parse(os.Getenv("GITOPS_REPO_URL"))
-		name := strings.Split(os.Getenv("GITOPS_REPO_URL"), "/")
-		return name[4], parsed, err
-	} else {
-		parsed, err := url.Parse(os.Getenv("BUS_REPO_URL"))
-		name := strings.Split(os.Getenv("BUS_REPO_URL"), "/")
-		return name[4], parsed, err
+func parse(repo string) (string, *scm.Client, error) {
+	parsed, err := url.Parse(os.Getenv("GITOPS_REPO_URL"))
+	if err != nil {
+		return "", nil, err
 	}
+	name := strings.Split(os.Getenv("GITOPS_REPO_URL"), "/")
+	parsed.User = url.UserPassword("", os.Getenv("GITHUB_TOKEN"))
+	client, err := factory.FromRepoURL(parsed.String())
+	if err != nil {
+		return "", nil, err
+	}
+	return name[4], client, err
 }
 
 func createRepository(repo string) error {
-	name, parsed, err := parse(repo)
-	if err != nil {
-		return err
-	}
-	parsed.User = url.UserPassword("", os.Getenv("GITHUB_TOKEN"))
-	client, err := factory.FromRepoURL(parsed.String())
+	name, client, err := parse(repo)
 	if err != nil {
 		return err
 	}
@@ -236,7 +237,107 @@ func createRepository(repo string) error {
 	return nil
 }
 
-func loginArgoAPIServerLogin() error {
+func createPR() error {
+	_, client, err := parse(strings.Split(os.Getenv("GITOPS_REPO_URL"), "/")[4])
+	if err != nil {
+		return err
+	}
+
+	pr := &scm.PullRequestInput{
+		Title: "Add new service",
+		Head:  "addNewService",
+		Base:  "main",
+		Body:  "Add new service",
+	}
+
+	_, _, err = client.PullRequests.Create(context.Background(), strings.Split(os.Getenv("GITOPS_REPO_URL"), ".com/")[1], pr)
+	if err != nil {
+		return err
+	}
+	fmt.Println("PR has been created")
+	return nil
+}
+
+func mergePR() error {
+	_, client, err := parse(strings.Split(os.Getenv("GITOPS_REPO_URL"), "/")[4])
+	if err != nil {
+		return err
+	}
+
+	merge := &scm.PullRequestMergeOptions{
+		DeleteSourceBranch: true,
+	}
+
+	_, err = client.PullRequests.Merge(context.Background(), strings.Split(os.Getenv("GITOPS_REPO_URL"), ".com/")[1], 1, merge)
+	if err != nil {
+		return err
+	}
+	fmt.Println("PR has been merged!")
+	return nil
+}
+
+func waitPass() error {
+
+	var stderr bytes.Buffer
+	var stdout bytes.Buffer
+
+	ocPath, err := executableBinaryPath("oc")
+	if err != nil {
+		return err
+	}
+
+	err = wait.Poll(time.Second*1, time.Minute*30, func() (bool, error) {
+
+		cmd := exec.Command(ocPath, "get", "pipelinerun", "-n", "cicd")
+		cmd.Stderr = &stderr
+		cmd.Stdout = &stdout
+		err = cmd.Run()
+
+		if err != nil {
+			return false, err
+		}
+
+		if stdout.String() == "" {
+			if strings.Contains(stderr.String(), "No resources found in cicd namespace.") {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	err = wait.Poll(time.Second*1, time.Minute*20, func() (bool, error) {
+
+		output, err := exec.Command(ocPath, "get", "pipelinerun", "-n", "cicd", "--sort-by=.status.startTime", "-o", "jsonpath='{.items[-1].status.conditions[0].status}'").Output()
+		if err != nil {
+			fmt.Println("Error:", err)
+			return false, err
+		}
+
+		if string(output) == "'Unknown'" {
+			fmt.Println("Waiting for checks to pass")
+			return false, nil
+		} else if string(output) == "'True'" {
+			fmt.Println("PR is ready to be merged, all checks passed!")
+			return true, nil
+		} else {
+			fmt.Println("One or more checks failed!")
+			return false, err
+		}
+	})
+
+	if err != nil {
+		return err
+	} else {
+		mergePR()
+	}
+	return nil
+}
+
+func loginToArgoAPIServer() error {
 	var stderr bytes.Buffer
 	argocdPath, err := executableBinaryPath("argocd")
 	if err != nil {
@@ -284,8 +385,7 @@ func argocdAPIServer() (string, error) {
 
 	for index := range deployments {
 		err = wait.Poll(time.Second*1, time.Minute*10, func() (bool, error) {
-			isRolledOut, err := waitForDeploymentsUpAndRunning("openshift-gitops", deployments[index])
-			return isRolledOut, err
+			return waitForDeploymentsUpAndRunning("openshift-gitops", deployments[index])
 		})
 	}
 

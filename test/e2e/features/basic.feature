@@ -53,7 +53,7 @@ Feature: Basic test
         And Wait for application "dev-env" to be in "Synced" state
         And Wait for application "stage-env" to be in "Synced" state
         And Wait for application "cicd-app" to be in "Synced" state
-        Then executing "oc delete -k config/argocd" succeeds
+
         And executing "cd .." succeeds
         
     Scenario: First CI run
@@ -72,19 +72,15 @@ Feature: Basic test
         And Wait for application "dev-env" to be in "Synced" state
         And Wait for application "stage-env" to be in "Synced" state
         And Wait for application "cicd-app" to be in "Synced" state
-        Then executing "cd .." succeeds
-        And executing "oc apply -f secrets" succeeds
-        And executing "cd bootstrapresources" succeeds
+        And executing "oc apply -f ../secrets" succeeds
         When executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
         Then stderr should be empty
         Then executing "kam webhook delete --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
-        And executing "oc delete -k config/argocd" succeeds
         And executing "cd .." succeeds
         And executing "oc delete -f secrets" succeeds
 
     Scenario: Create an Application/Service in the new Environment and Commit and Push configuration to GitOps repository
         Given "gitops" repository is created
-        And "bus" repository is created
         When executing "kam bootstrap --service-repo-url $SERVICE_REPO_URL --gitops-repo-url $GITOPS_REPO_URL --image-repo $IMAGE_REPO --dockercfgjson $DOCKERCONFIGJSON_PATH --git-host-access-token $GIT_ACCESS_TOKEN --output bootstrapresources" succeeds
         Then executing "cd bootstrapresources" succeeds
         And executing "git init ." succeeds
@@ -99,21 +95,26 @@ Feature: Basic test
         And Wait for application "dev-env" to be in "Synced" state
         And Wait for application "stage-env" to be in "Synced" state
         And Wait for application "cicd-app" to be in "Synced" state
-        Then executing "cd .." succeeds
-        And executing "oc apply -f secrets" succeeds
-        And executing "cd bootstrapresources" succeeds
+        Then executing "git checkout -b addNewService" succeeds
+        And executing "oc apply -f ../secrets" succeeds
         When executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
+        And executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --cicd" succeeds
         Then stderr should be empty
         And executing "cd .." succeeds
         When executing "kam environment add --env-name new-env --pipelines-folder bootstrapresources" succeeds
         Then stderr should be empty
         When executing "kam service add --env-name new-env --app-name app-bus --service-name bus --git-repo-url $BUS_REPO_URL --pipelines-folder bootstrapresources" succeeds
         And executing "oc apply -f secrets/webhook-secret-new-env-bus.yaml" succeeds
-        Then add kubernetes resource to the service in new environment
+        Then Add kubernetes resource to the service in new environment
         And executing "cd bootstrapresources" succeeds
         Then executing "git add ." succeeds
         And executing "git commit -m 'Add new service'" succeeds
-        And executing "git push origin main" succeeds
+        And executing "git push origin addNewService" succeeds
+        Then Create a pull request
+        And Wait for all the checks to pass and merge the pull request
+        Then executing "git checkout main" succeeds
+        And executing "git pull --rebase origin main" succeeds
+        And executing "git push" succeeds
         Then Wait for application "new-env-app-bus" to be in "Synced" state
         And Wait for application "new-env-env" to be in "Synced" state
         And Wait for application "argo-app" to be in "Synced" state
@@ -122,13 +123,11 @@ Feature: Basic test
         And Wait for application "stage-env" to be in "Synced" state
         And Wait for application "cicd-app" to be in "Synced" state
         Then executing "kam webhook delete --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
-        And executing "oc delete -k config/argocd" succeeds
         And executing "cd .." succeeds
         And executing "oc delete -f secrets" succeeds
-        
+
     Scenario: Create Webhook
         Given "gitops" repository is created
-        And "bus" repository is created
         When executing "kam bootstrap --service-repo-url $SERVICE_REPO_URL --gitops-repo-url $GITOPS_REPO_URL --image-repo $IMAGE_REPO --dockercfgjson $DOCKERCONFIGJSON_PATH --git-host-access-token $GIT_ACCESS_TOKEN --output bootstrapresources" succeeds
         Then executing "cd bootstrapresources" succeeds
         And executing "git init ." succeeds
@@ -143,21 +142,26 @@ Feature: Basic test
         And Wait for application "dev-env" to be in "Synced" state
         And Wait for application "stage-env" to be in "Synced" state
         And Wait for application "cicd-app" to be in "Synced" state
-        Then executing "cd .." succeeds
-        And executing "oc apply -f secrets" succeeds
-        And executing "cd bootstrapresources" succeeds
+        Then executing "git checkout -b addNewService" succeeds
+        And executing "oc apply -f ../secrets" succeeds
         When executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
+        And executing "kam webhook create --git-host-access-token $GIT_ACCESS_TOKEN --cicd" succeeds
         Then stderr should be empty
         And executing "cd .." succeeds
         When executing "kam environment add --env-name new-env --pipelines-folder bootstrapresources" succeeds
         Then stderr should be empty
         When executing "kam service add --env-name new-env --app-name app-bus --service-name bus --git-repo-url $BUS_REPO_URL --pipelines-folder bootstrapresources" succeeds
         And executing "oc apply -f secrets/webhook-secret-new-env-bus.yaml" succeeds
-        Then add kubernetes resource to the service in new environment
+        Then Add kubernetes resource to the service in new environment
         And executing "cd bootstrapresources" succeeds
         Then executing "git add ." succeeds
         And executing "git commit -m 'Add new service'" succeeds
-        And executing "git push origin main" succeeds
+        And executing "git push origin addNewService" succeeds
+        Then Create a pull request
+        And Wait for all the checks to pass and merge the pull request
+        Then executing "git checkout main" succeeds
+        And executing "git pull --rebase origin main" succeeds
+        And executing "git push" succeeds
         Then Wait for application "new-env-app-bus" to be in "Synced" state
         And Wait for application "new-env-env" to be in "Synced" state
         And Wait for application "argo-app" to be in "Synced" state
@@ -172,4 +176,3 @@ Feature: Basic test
         And executing "oc delete -f secrets" succeeds
         And executing "cd bootstrapresources" succeeds
         And executing "kam webhook delete --git-host-access-token $GIT_ACCESS_TOKEN --env-name dev --service-name taxi" succeeds
-        And executing "oc delete -k config/argocd" succeeds

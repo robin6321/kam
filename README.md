@@ -33,7 +33,7 @@ Please visit the [OpenShift Console Documentation](./docs/devconsole) to visuali
 
 ## How to Contribute
 
-Building `kam` requires Go 1.14+
+Building `kam` requires Go 1.16
 
 To contribute to `KAM CLI`, follow these steps:
 

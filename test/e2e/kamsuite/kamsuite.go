@@ -147,7 +147,7 @@ func envVariableCheck() bool {
 			os.Setenv("SERVICE_REPO_URL", "https://github.com/kam-bot/taxi")
 			os.Setenv("GITOPS_REPO_URL", "https://github.com/kam-bot/taxi-"+os.Getenv("PRNO")+majorVersion)
 			os.Setenv("IMAGE_REPO", "quay.io/kam-bot/taxi")
-			os.Setenv("BUS_REPO_URL", "https://github.com/kam-bot/bus-"+os.Getenv("PRNO")+majorVersion)
+			os.Setenv("BUS_REPO_URL", "https://github.com/kam-bot/bus")
 			os.Setenv("DOCKERCONFIGJSON_PATH", os.Getenv("KAM_QUAY_DOCKER_CONF_SECRET_FILE"))
 			os.Setenv("GIT_ACCESS_TOKEN", os.Getenv("GITHUB_TOKEN"))
 		} else {
@@ -309,6 +309,7 @@ func waitPass() error {
 		return err
 	}
 
+	fmt.Println("Waiting for checks to pass")
 	err = wait.Poll(time.Second*1, time.Minute*20, func() (bool, error) {
 
 		output, err := exec.Command(ocPath, "get", "pipelinerun", "-n", "cicd", "--sort-by=.status.startTime", "-o", "jsonpath='{.items[-1].status.conditions[0].status}'").Output()
@@ -318,13 +319,13 @@ func waitPass() error {
 		}
 
 		if string(output) == "'Unknown'" {
-			fmt.Println("Waiting for checks to pass")
+			fmt.Print(".")
 			return false, nil
 		} else if string(output) == "'True'" {
-			fmt.Println("PR is ready to be merged, all checks passed!")
+			fmt.Println("\nPR is ready to be merged, all checks passed!")
 			return true, nil
 		} else {
-			fmt.Println("One or more checks failed!")
+			fmt.Println("\nOne or more checks failed!")
 			return false, err
 		}
 	})

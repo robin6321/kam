@@ -1,48 +1,65 @@
-#!/bin/bash
+# #!/bin/bash
 set -x
-echo "Starting openshift-pipelines operator installation"
-install_openshift_pipelines_operator() {
-oc create -f - <<EOF
+
+echo "Installing OpenShift Pipelines operator"
+echo -e "Ensure pipelines subscription exists"
+oc get subscription openshift-pipelines-operator-rh -n openshift-operators 2>/dev/null || \
+cat <<EOF | oc apply -f -
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: openshift-pipelines-operator-rh
   namespace: openshift-operators
-  labels:
-    operators.coreos.com/openshift-pipelines-operator-rh.openshift-operators: ''
 spec:
   channel: stable
   name: openshift-pipelines-operator-rh
   source: redhat-operators
   sourceNamespace: openshift-marketplace
 EOF
-}
 
-install_openshift_pipelines_operator
-# pipelines operator status
-count=0
-while [ "$count" -lt "15" ];
-do
-    operator_status=`oc get csv -n openshift-operators | grep redhat-openshift-pipelines`
-    if [[ $operator_status == *"Succeeded"* ]]; then
-        break
-    else
-        count=`expr $count + 1`
-        sleep 10
-    fi
+for i in {1..150}; do  # timeout after 5 minutes
+  pods="$(oc get pods -n openshift-operators --no-headers 2>/dev/null | wc -l)"
+  if [[ "${pods}" -ge 1 ]]; then
+    echo -e "\nWaiting for Pipelines operator pod"
+    oc wait --for=condition=Ready -n openshift-operators -l name=openshift-pipelines-operator pod --timeout=5m
+    retval=$?
+    if [[ "${retval}" -gt 0 ]]; then exit "${retval}"; else break; fi
+  fi
+  if [[ "${i}" -eq 150 ]]; then
+    echo "Timeout: pod was not created."
+    exit 2
+  fi  
+  echo -n "."
+  sleep 2
 done
-echo "Completed openshift-pipelines operator installation"
 
-echo "Starting OpenShift GitOps operator installation"
-install_openshift_gitops_operator(){
-oc create -f - <<EOF
+for i in {1..150}; do  # timeout after 5 minutes
+  pods="$(oc get pods -n openshift-pipelines --no-headers 2>/dev/null | wc -l)"
+  if [[ "${pods}" -ge 4 ]]; then
+    echo -e "\nWaiting for Pipelines and Triggers pods"
+    oc wait --for=condition=Ready -n openshift-pipelines pod --timeout=5m \
+      -l 'app in (tekton-pipelines-controller,tekton-pipelines-webhook,tekton-triggers-controller,
+      tekton-triggers-webhook)'
+    retval=$?
+    if [[ "${retval}" -gt 0 ]]; then exit "${retval}"; else break; fi
+  fi
+  if [[ "${i}" -eq 150 ]]; then
+    echo "Timeout: pod was not created."
+    exit 2
+  fi  
+  echo -n "."
+  sleep 2
+done
+
+echo "Installing OpenShift GitOps operator"
+echo -e "Ensure gitops subscription exists"
+oc get subscription openshift-gitops-operator-rh -n openshift-operators 2>/dev/null || \
+cat <<EOF | oc apply -f -
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: openshift-gitops-operator
   namespace: openshift-operators
-  labels:
-    operators.coreos.com/openshift-gitops-operator.openshift-operators: ''
 spec:
   channel: stable
   installPlanApproval: Automatic
@@ -50,9 +67,7 @@ spec:
   source: redhat-operators
   sourceNamespace: openshift-marketplace
 EOF
-}
 
-install_openshift_gitops_operator
 # GitOps operator status check
 count=0
 while [ "$count" -lt "15" ];
